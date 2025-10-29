@@ -2,6 +2,12 @@
 
 Cloudflare Workers、Durable Objects、KVストレージを使用したGitHub webhookの検証システムです。
 
+## デプロイ済みURL
+
+```
+https://github-webhook-worker.mtamaramu.com
+```
+
 ## 機能
 
 - **Webhook署名検証**: GitHub webhookの`X-Hub-Signature-256`ヘッダーを検証
