@@ -141,6 +141,46 @@ GitHub webhookを受信・検証するエンドポイント
 }
 ```
 
+#### `PATCH /repo/{owner/repository}` 🔒
+リポジトリURLをもとにメタデータを部分更新
+
+**必要なヘッダー:**
+- `X-Service-Binding: true`
+
+**リクエストボディ（部分更新）:**
+```json
+{
+  "version": "v2.0.0",
+  "grpcEndpoint": "grpc://new-api.example.com:50051"
+}
+```
+
+いずれかのフィールドのみを指定可能（両方でも可）：
+- `version`: バージョンのみ更新
+- `grpcEndpoint`: gRPCエンドポイントのみ更新
+
+**レスポンス:**
+```json
+{
+  "success": true,
+  "data": {
+    "repo": "owner/repository",
+    "version": "v2.0.0",
+    "grpcEndpoint": "grpc://new-api.example.com:50051",
+    "createdAt": 1234567890,
+    "updatedAt": 1234567900
+  }
+}
+```
+
+**エラーレスポンス（リポジトリが存在しない場合）:**
+```json
+{
+  "success": false,
+  "error": "Repository not found. Use POST /repo to create new repository."
+}
+```
+
 #### `GET /repos?limit=100` 🔒
 全リポジトリのメタデータを一覧取得
 
@@ -358,6 +398,20 @@ const response = await env.WEBHOOK_WORKER.fetch(
 const getResponse = await env.WEBHOOK_WORKER.fetch(
   new Request('https://fake-host/repo/myorg/myrepo', {
     headers: { 'X-Service-Binding': 'true' }
+  })
+);
+
+// リポジトリメタデータの部分更新（gRPCエンドポイントのみ更新）
+const patchResponse = await env.WEBHOOK_WORKER.fetch(
+  new Request('https://fake-host/repo/myorg/myrepo', {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Service-Binding': 'true'
+    },
+    body: JSON.stringify({
+      grpcEndpoint: 'grpc://new-api.example.com:50051'
+    })
   })
 );
 

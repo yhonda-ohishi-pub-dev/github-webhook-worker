@@ -183,6 +183,68 @@ export default {
 			}
 		}
 
+		// Update repository metadata by URL (requires Service Binding)
+		if (url.pathname.startsWith('/repo/') && request.method === 'PATCH') {
+			// Check if request is from Service Binding
+			if (!isServiceBinding(request)) {
+				return forbiddenResponse();
+			}
+
+			try {
+				const repo = decodeURIComponent(url.pathname.substring(6));
+
+				if (!repo) {
+					return new Response(JSON.stringify({
+						success: false,
+						error: 'Repository name is required'
+					}), {
+						status: 400,
+						headers: { 'Content-Type': 'application/json' }
+					});
+				}
+
+				// Get existing metadata
+				const existing = await repoManager.getRepoMetadata(repo);
+
+				if (!existing) {
+					return new Response(JSON.stringify({
+						success: false,
+						error: 'Repository not found. Use POST /repo to create new repository.'
+					}), {
+						status: 404,
+						headers: { 'Content-Type': 'application/json' }
+					});
+				}
+
+				// Parse partial update from request body
+				const body = await request.json() as Partial<{ version: string; grpcEndpoint: string }>;
+
+				// Update only provided fields
+				const version = body.version !== undefined ? body.version : existing.version;
+				const grpcEndpoint = body.grpcEndpoint !== undefined ? body.grpcEndpoint : existing.grpcEndpoint;
+
+				// Save updated metadata
+				const updated = await repoManager.saveRepoMetadata(repo, version, grpcEndpoint);
+
+				return new Response(JSON.stringify({
+					success: true,
+					data: updated
+				}), {
+					headers: { 'Content-Type': 'application/json' }
+				});
+
+			} catch (error) {
+				console.error('Error updating repo metadata:', error);
+				return new Response(JSON.stringify({
+					success: false,
+					error: error instanceof Error ? error.message : 'Unknown error'
+				}), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+		}
+
 		// List all repositories (requires Service Binding)
 		if (url.pathname === '/repos' && request.method === 'GET') {
 			// Check if request is from Service Binding
