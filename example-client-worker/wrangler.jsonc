@@ -1,0 +1,19 @@
+{
+	"$schema": "../node_modules/wrangler/config-schema.json",
+	"name": "example-client-worker",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-10-24",
+	"observability": {
+		"enabled": true
+	},
+	/**
+	 * Service Bindings
+	 * Connect to github-webhook-worker for internal API access
+	 */
+	"services": [
+		{
+			"binding": "WEBHOOK_WORKER",
+			"service": "github-webhook-worker"
+		}
+	]
+}

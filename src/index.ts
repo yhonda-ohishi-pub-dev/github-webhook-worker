@@ -7,6 +7,7 @@
 
 import { WebhookVerifier } from './webhook-verifier';
 import { RepoMetadataManager } from './repo-metadata';
+import { isServiceBinding, forbiddenResponse } from './auth';
 
 export { WebhookVerifier };
 
@@ -86,8 +87,13 @@ export default {
 		// Repository metadata endpoints
 		const repoManager = new RepoMetadataManager(env.REPO_METADATA);
 
-		// Save repository metadata
+		// Save repository metadata (requires Service Binding)
 		if (url.pathname === '/repo' && request.method === 'POST') {
+			// Check if request is from Service Binding
+			if (!isServiceBinding(request)) {
+				return forbiddenResponse();
+			}
+
 			try {
 				const body = await request.json() as { repo: string; version: string; grpcEndpoint: string };
 
@@ -126,8 +132,13 @@ export default {
 			}
 		}
 
-		// Get repository metadata
+		// Get repository metadata (requires Service Binding)
 		if (url.pathname.startsWith('/repo/') && request.method === 'GET') {
+			// Check if request is from Service Binding
+			if (!isServiceBinding(request)) {
+				return forbiddenResponse();
+			}
+
 			try {
 				const repo = decodeURIComponent(url.pathname.substring(6));
 
@@ -172,8 +183,13 @@ export default {
 			}
 		}
 
-		// List all repositories
+		// List all repositories (requires Service Binding)
 		if (url.pathname === '/repos' && request.method === 'GET') {
+			// Check if request is from Service Binding
+			if (!isServiceBinding(request)) {
+				return forbiddenResponse();
+			}
+
 			try {
 				const limit = parseInt(url.searchParams.get('limit') || '100');
 				const repos = await repoManager.listRepositories(limit);
@@ -198,8 +214,13 @@ export default {
 			}
 		}
 
-		// Delete repository metadata
+		// Delete repository metadata (requires Service Binding)
 		if (url.pathname.startsWith('/repo/') && request.method === 'DELETE') {
+			// Check if request is from Service Binding
+			if (!isServiceBinding(request)) {
+				return forbiddenResponse();
+			}
+
 			try {
 				const repo = decodeURIComponent(url.pathname.substring(6));
 

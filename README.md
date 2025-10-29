@@ -16,6 +16,7 @@ https://github-webhook-worker.mtamaramu.com
 - **KVストレージ**: リポジトリのメタデータ（バージョン、gRPCエンドポイント）を保存
 - **自動更新**: webhookイベント（push、release、create）受信時にKVのメタデータを自動更新
 - **履歴管理**: 受信したwebhookの履歴を取得可能
+- **Service Bindings**: リポジトリメタデータAPIは内部通信のみ（外部アクセス不可）
 
 ## アーキテクチャ
 
@@ -29,7 +30,9 @@ GitHub → Worker → Durable Object → 検証 & 保存
 
 ## エンドポイント
 
-### `GET /health`
+### 公開エンドポイント（インターネット経由でアクセス可能）
+
+#### `GET /health`
 ヘルスチェックエンドポイント
 
 **レスポンス:**
@@ -41,7 +44,7 @@ GitHub → Worker → Durable Object → 検証 & 保存
 }
 ```
 
-### `POST /webhook`
+#### `POST /webhook`
 GitHub webhookを受信・検証するエンドポイント
 
 **必要なヘッダー:**
@@ -66,7 +69,7 @@ GitHub webhookを受信・検証するエンドポイント
 }
 ```
 
-### `GET /history?limit=10`
+#### `GET /history?limit=10`
 受信したwebhookの履歴を取得
 
 **クエリパラメータ:**
@@ -84,8 +87,16 @@ GitHub webhookを受信・検証するエンドポイント
 ]
 ```
 
-### `POST /repo`
+### Service Binding限定エンドポイント（内部通信のみ）
+
+> ⚠️ これらのエンドポイントは、Service Bindingsを使用した同じアカウント内のWorkerからのみアクセス可能です。
+> 外部からのアクセスは403 Forbiddenエラーを返します。
+
+#### `POST /repo` 🔒
 リポジトリのメタデータを保存
+
+**必要なヘッダー:**
+- `X-Service-Binding: true`
 
 **リクエストボディ:**
 ```json
@@ -110,8 +121,11 @@ GitHub webhookを受信・検証するエンドポイント
 }
 ```
 
-### `GET /repo/{owner/repository}`
+#### `GET /repo/{owner/repository}` 🔒
 リポジトリのメタデータを取得
+
+**必要なヘッダー:**
+- `X-Service-Binding: true`
 
 **レスポンス:**
 ```json
@@ -127,8 +141,11 @@ GitHub webhookを受信・検証するエンドポイント
 }
 ```
 
-### `GET /repos?limit=100`
+#### `GET /repos?limit=100` 🔒
 全リポジトリのメタデータを一覧取得
+
+**必要なヘッダー:**
+- `X-Service-Binding: true`
 
 **クエリパラメータ:**
 - `limit`: 取得する件数（デフォルト: 100）
@@ -150,8 +167,11 @@ GitHub webhookを受信・検証するエンドポイント
 }
 ```
 
-### `DELETE /repo/{owner/repository}`
+#### `DELETE /repo/{owner/repository}` 🔒
 リポジトリのメタデータを削除
+
+**必要なヘッダー:**
+- `X-Service-Binding: true`
 
 **レスポンス:**
 ```json
@@ -160,6 +180,58 @@ GitHub webhookを受信・検証するエンドポイント
   "message": "Repository owner/repository deleted"
 }
 ```
+
+## Service Bindingsの使い方
+
+### 概要
+
+リポジトリメタデータAPI（`/repo`, `/repos`）は、Service Bindingsを使用した内部通信のみアクセス可能です。
+これにより、外部からの不正アクセスを完全に防ぎ、同じアカウント内のWorkerのみがメタデータにアクセスできます。
+
+### クライアントWorkerの設定
+
+#### 1. `wrangler.jsonc`に追加
+
+```json
+{
+  "services": [
+    {
+      "binding": "WEBHOOK_WORKER",
+      "service": "github-webhook-worker"
+    }
+  ]
+}
+```
+
+#### 2. コード例
+
+```typescript
+export default {
+  async fetch(request, env, ctx) {
+    // リポジトリ一覧を取得
+    const response = await env.WEBHOOK_WORKER.fetch(
+      new Request('https://fake-host/repos', {
+        headers: {
+          'X-Service-Binding': 'true'
+        }
+      })
+    );
+
+    const data = await response.json();
+    return new Response(JSON.stringify(data));
+  }
+};
+```
+
+#### 重要なポイント
+
+- **URL**: `https://fake-host`を使用（実際のドメインではない）
+- **ヘッダー**: `X-Service-Binding: true`を必ず含める
+- **同じアカウント**: 両方のWorkerが同じCloudflareアカウントにデプロイされている必要がある
+
+### サンプルコード
+
+完全なクライアントWorkerのサンプルは [`example-client-worker/`](example-client-worker/) ディレクトリを参照してください。
 
 ## セットアップ
 
@@ -246,35 +318,58 @@ npm test
 
 ## セキュリティ
 
-- HMAC-SHA256による署名検証
-- タイミング攻撃を防ぐための定数時間比較
-- シークレットは環境変数で管理
+### Webhook検証
+- **HMAC-SHA256署名検証**: GitHub Webhookの署名を検証
+- **タイミング攻撃対策**: 定数時間比較を使用
+- **シークレット管理**: 環境変数で安全に管理
+
+### リポジトリメタデータAPI
+- **Service Bindings限定**: 外部からのアクセスを完全にブロック
+- **内部通信のみ**: 同じアカウント内のWorkerのみアクセス可能
+- **ゼロトラスト**: 追加の認証・認可レイヤー不要（Worker間通信は信頼されている）
+- **情報漏洩防止**: インターネット経由でのアクセス不可
 
 ## 使用例
 
-### リポジトリメタデータの手動登録
+### リポジトリメタデータの操作（Service Binding経由）
 
-```bash
-curl -X POST https://your-worker.workers.dev/repo \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repo": "myorg/myrepo",
-    "version": "v1.0.0",
-    "grpcEndpoint": "grpc://api.example.com:50051"
-  }'
+⚠️ `/repo`エンドポイントはService Binding限定です。外部からの直接アクセスはできません。
+
+クライアントWorkerからの使用例：
+
+```typescript
+// リポジトリメタデータの登録/更新
+const response = await env.WEBHOOK_WORKER.fetch(
+  new Request('https://fake-host/repo', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Service-Binding': 'true'
+    },
+    body: JSON.stringify({
+      repo: 'myorg/myrepo',
+      version: 'v1.0.0',
+      grpcEndpoint: 'grpc://api.example.com:50051'
+    })
+  })
+);
+
+// リポジトリメタデータの取得
+const getResponse = await env.WEBHOOK_WORKER.fetch(
+  new Request('https://fake-host/repo/myorg/myrepo', {
+    headers: { 'X-Service-Binding': 'true' }
+  })
+);
+
+// 全リポジトリの一覧
+const listResponse = await env.WEBHOOK_WORKER.fetch(
+  new Request('https://fake-host/repos', {
+    headers: { 'X-Service-Binding': 'true' }
+  })
+);
 ```
 
-### メタデータの取得
-
-```bash
-curl https://your-worker.workers.dev/repo/myorg/myrepo
-```
-
-### 全リポジトリの一覧
-
-```bash
-curl https://your-worker.workers.dev/repos
-```
+完全なサンプルコードは [`example-client-worker/`](example-client-worker/) を参照してください。
 
 ## ライセンス
 
