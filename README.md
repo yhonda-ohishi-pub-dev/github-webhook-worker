@@ -4,6 +4,7 @@ Cloudflare Workers、Durable Objects、KVストレージを使用したGitHub we
 
 ## デプロイ済みURL
 
+本番環境:
 ```
 https://github-webhook-worker.mtamaramu.com
 ```
