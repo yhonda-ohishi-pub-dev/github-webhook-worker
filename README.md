@@ -14,7 +14,7 @@ https://github-webhook-worker.mtamaramu.com
 - **Webhook署名検証**: GitHub webhookの`X-Hub-Signature-256`ヘッダーを検証
 - **Durable Objects**: 各webhookをDurable Objectで処理し、履歴を保存
 - **KVストレージ**: リポジトリのメタデータ（バージョン、gRPCエンドポイント）を保存
-- **自動更新**: webhookイベント（push、release、create）受信時にKVのメタデータを自動更新
+- **自動更新**: webhookイベント（push/release）受信時にKVのメタデータを自動更新
 - **履歴管理**: 受信したwebhookの履歴を取得可能
 - **Service Bindings**: リポジトリメタデータAPIは内部通信のみ（外部アクセス不可）
 
@@ -324,21 +324,19 @@ npm test
 
 ## Webhook自動更新について
 
-このWorkerは、以下のGitHubイベントを受信したときに自動的にKVのリポジトリメタデータを更新します：
+このWorkerは、GitHub webhookイベントを受信したときに自動的にKVのリポジトリメタデータを更新します。
 
 ### 対応イベント
 
-1. **push**: ブランチまたはタグへのプッシュ
-   - `refs/tags/v1.0.0` → バージョン `v1.0.0` として保存
-   - `refs/heads/main` → バージョン `main` として保存
+**push**: コミットのプッシュ時
+- リポジトリが未登録の場合、自動的に登録（version/grpcEndpointは空）
+- 既存リポジトリの場合、更新日時のみ更新（version/grpcEndpointは保持）
 
-2. **release**: リリースの作成
-   - リリースのタグ名をバージョンとして保存
+**release**: GitHub Releaseの作成時
+- リリースのタグ名（例: `v1.0.0`）をバージョンとして更新
+- 既存のgRPCエンドポイント情報は保持されます
 
-3. **create**: タグの作成
-   - 作成されたタグ名をバージョンとして保存
-
-既存のgRPCエンドポイント情報は保持されます。
+**推奨**: バージョン管理にはGitHub Releasesの使用を推奨します。pushイベントではリポジトリの登録のみが行われます。
 
 ## Durable Objectsについて
 

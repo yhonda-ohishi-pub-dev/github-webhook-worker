@@ -100,30 +100,31 @@ export class WebhookVerifier extends DurableObject {
 			return;
 		}
 
-		// Handle different webhook events
-		if (event === 'push' || event === 'release' || event === 'create') {
-			let version = '';
-			let grpcEndpoint = '';
+		// Get existing metadata
+		const existing = await repoManager.getRepoMetadata(repo);
 
-			// Extract version based on event type
-			if (event === 'push' && payload.ref) {
-				// Extract tag or branch name
-				version = payload.ref.replace('refs/tags/', '').replace('refs/heads/', '');
-			} else if (event === 'release' && payload.release?.tag_name) {
-				version = payload.release.tag_name;
-			} else if (event === 'create' && payload.ref_type === 'tag') {
-				version = payload.ref;
+		// Handle release events - update version
+		if (event === 'release' && payload.release?.tag_name) {
+			const version = payload.release.tag_name;
+			const grpcEndpoint = existing?.grpcEndpoint || '';
+
+			await repoManager.saveRepoMetadata(repo, version, grpcEndpoint);
+			console.log(`Updated metadata for ${repo}: version=${version}`);
+		}
+		// Handle push events - register/update repo without changing version
+		else if (event === 'push') {
+			// Only register if repo doesn't exist yet
+			if (!existing) {
+				await repoManager.saveRepoMetadata(repo, '', '');
+				console.log(`Registered new repository: ${repo}`);
+			} else {
+				// Update timestamps without changing version/grpcEndpoint
+				await repoManager.saveRepoMetadata(repo, existing.version, existing.grpcEndpoint);
+				console.log(`Updated timestamp for ${repo}`);
 			}
-
-			// Get existing metadata to preserve grpcEndpoint
-			const existing = await repoManager.getRepoMetadata(repo);
-			grpcEndpoint = existing?.grpcEndpoint || '';
-
-			// Only update if we have a version
-			if (version) {
-				await repoManager.saveRepoMetadata(repo, version, grpcEndpoint);
-				console.log(`Updated metadata for ${repo}: version=${version}`);
-			}
+		}
+		else {
+			console.log(`No action for ${event} event on ${repo}`);
 		}
 	}
 
